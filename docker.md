@@ -1,0 +1,18 @@
+docker run \
+-e POSTGRES_PASSWORD=postgres \
+--rm \
+--security-opt="seccomp=unconfined" \
+--cap-add CAP_SYS_RESOURCE \
+--cap-add CAP_BPF \
+--cap-add CAP_PERFMON \
+--cap-add CAP_SYS_PTRACE 
+-v /sys/kernel/debug:/sys/kernel/debug:ro \
+-p 5432:5432 \
+postgres
+
+// provided there is only one container running postgres
+docker exec -it $(docker ps --filter "ancestor=postgres" -q) bash
+
+apt-get update && apt-get install -y bpftrace vim linux-libc-dev git
+git clone https://github.com/FritsHoogland/postgres-bpftrace.git
+

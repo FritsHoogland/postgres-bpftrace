@@ -1,7 +1,12 @@
 #!/usr/bin/env bpftrace
+// Requires:
+// - bpftrace, linux-libc-dev (debian)
+//
+// FIXME: path to postgres executable is hard coded
 BEGIN
 {
-    printf("PostgreSQL statement analyzer. Time in microseconds (us)\n");
+    printf("PostgreSQL statement execution analyzer.\n");
+    printf("Time in microseconds (us).\n");
     printf("pid   :Phase      :time to phase :time in phase : query\n");
     printf("------|-----------|--------------|--------------|------\n");
 }
