@@ -3,6 +3,7 @@
 // - bpftrace, linux-libc-dev (debian)
 //
 // FIXME: path to postgres executable is hard coded
+// FIXME: if an error occurs in the execute phase, there is no query_execute_done probe fired, and the portal counter stays at current value
 BEGIN
 {
     printf("PostgreSQL statement execution analyzer.\n");
