@@ -2,6 +2,8 @@
 // Requires:
 // - bpftrace, linux-libc-dev (debian)
 //
+// Add -p <pid> to filter on a single process (select bg_backend_pid())
+//
 // FIXME: path to postgres executable is hard coded
 // FIXME: if an error occurs in the execute phase, there is no query_execute_done probe fired, and the portal counter stays at current value
 BEGIN
