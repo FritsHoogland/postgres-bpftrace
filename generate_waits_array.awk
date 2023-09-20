@@ -2,6 +2,8 @@
 # this script parses: src/backend/utils/activity/wait_event_names.txt
 # which is generated after compiling postgres.
 # this is used to build the list of wait events with their class number and wait event number
+#
+# FIXME: the wait order in wait_event_names.txt is incorrect for buffile_write and buffile_truncate: these are reversed (?)
 {
     wait_class_number["WaitEventActivity"]="0x05000000";
     wait_class_number["WaitEventClient"]="0x06000000";
