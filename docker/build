@@ -1,0 +1,3 @@
+docker info || exit
+docker build --progress plain --rm -t pg17_modified --file Dockerfile.postgres_17_modified .
+

@@ -1,0 +1,25 @@
+FROM debian:stable-slim
+
+RUN apt-get update && apt-get install -y pkgconf vim systemtap-sdt-dev bpftrace meson ninja-build git build-essential libreadline-dev zlib1g-dev flex bison libxml2-dev libxslt-dev libssl-dev libxml2-utils xsltproc ccache sudo
+RUN sed -i 's/^%sudo.*ALL=(ALL:ALL) ALL/%sudo ALL=(ALL:ALL) NOPASSWD:ALL/' /etc/sudoers
+RUN useradd -rm -d /home/postgres -G sudo -s /bin/bash postgres
+USER postgres
+WORKDIR /home/postgres
+RUN git clone https://github.com/postgres/postgres.git
+WORKDIR /home/postgres/postgres
+COPY wait_event.patch .
+RUN git apply wait_event.patch
+RUN meson setup build --prefix=/usr/local/pgsql -Ddtrace=enabled
+WORKDIR /home/postgres/postgres/build
+RUN ninja
+USER root
+RUN ninja install
+RUN mkdir -p /usr/local/pgsql/data
+RUN chown postgres /usr/local/pgsql/data
+USER postgres
+RUN /usr/local/pgsql/bin/initdb -D /usr/local/pgsql/data
+WORKDIR /home/postgres
+RUN echo "export PATH=\$PATH:/usr/local/pgsql/bin" >> .bashrc
+RUN echo "pg_ctl -D /usr/local/pgsql/data -l logfile start" > start_database
+RUN echo "pg_ctl -D /usr/local/pgsql/data stop" > stop_database
+RUN chmod 755 start_database stop_database

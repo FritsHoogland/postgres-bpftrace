@@ -1,0 +1,41 @@
+diff --git a/src/backend/utils/probes.d b/src/backend/utils/probes.d
+index 0af275587b..50509f1738 100644
+--- a/src/backend/utils/probes.d
++++ b/src/backend/utils/probes.d
+@@ -91,4 +91,7 @@ provider postgresql {
+ 	probe wal__switch();
+ 	probe wal__buffer__write__dirty__start();
+ 	probe wal__buffer__write__dirty__done();
++
++	probe wait__event__start(uint32);
++	probe wait__event__end();
+ };
+diff --git a/src/include/utils/wait_event.h b/src/include/utils/wait_event.h
+index 009b03a520..1062c5127e 100644
+--- a/src/include/utils/wait_event.h
++++ b/src/include/utils/wait_event.h
+@@ -27,6 +27,8 @@
+
+ /* enums for wait events */
+ #include "utils/wait_event_types.h"
++/* trace headerfile */
++#include "pg_trace.h"
+
+ extern const char *pgstat_get_wait_event(uint32 wait_event_info);
+ extern const char *pgstat_get_wait_event_type(uint32 wait_event_info);
+@@ -87,6 +89,7 @@ extern char **GetWaitEventExtensionNames(int *nwaitevents);
+ static inline void
+ pgstat_report_wait_start(uint32 wait_event_info)
+ {
++	TRACE_POSTGRESQL_WAIT_EVENT_START(wait_event_info);
+ 	/*
+ 	 * Since this is a four-byte field which is always read and written as
+ 	 * four-bytes, updates are atomic.
+@@ -103,6 +106,7 @@ pgstat_report_wait_start(uint32 wait_event_info)
+ static inline void
+ pgstat_report_wait_end(void)
+ {
++	TRACE_POSTGRESQL_WAIT_EVENT_END();
+ 	/* see pgstat_report_wait_start() */
+ 	*(volatile uint32 *) my_wait_event_info = 0;
+ }

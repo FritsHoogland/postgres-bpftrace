@@ -6,8 +6,9 @@ docker run \
 --cap-add CAP_SYS_RESOURCE \
 --cap-add CAP_BPF \
 --cap-add CAP_PERFMON \
---cap-add CAP_SYS_PTRACE 
+--cap-add CAP_SYS_PTRACE \
 -v /sys/kernel/debug:/sys/kernel/debug:ro \
+--pid host \
 -p 5432:5432 \
 postgres
 
