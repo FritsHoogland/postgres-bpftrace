@@ -1,9 +1,9 @@
 diff --git a/src/backend/utils/activity/backend_status.c b/src/backend/utils/activity/backend_status.c
-index 722c5acf38..c2ab5c0b06 100644
+index 6e734c6caf..2ce7585784 100644
 --- a/src/backend/utils/activity/backend_status.c
 +++ b/src/backend/utils/activity/backend_status.c
 @@ -25,6 +25,8 @@
- #include "utils/guc.h"                 /* for application_name */
+ #include "utils/guc.h"			/* for application_name */
  #include "utils/memutils.h"
 
 +#include "sys/resource.h"               /* for getrusage() */
@@ -11,11 +11,10 @@ index 722c5acf38..c2ab5c0b06 100644
 
  /* ----------
   * Total number of backends including auxiliary
-@@ -527,6 +529,18 @@ pgstat_report_activity(BackendState state, const char *cmd_str)
-        int                     len = 0;
+@@ -528,6 +530,18 @@ pgstat_report_activity(BackendState state, const char *cmd_str)
 
-        TRACE_POSTGRESQL_STATEMENT_STATUS(cmd_str);
-+
+ 	TRACE_POSTGRESQL_STATEMENT_STATUS(cmd_str);
+
 +        /* getrusage */
 +        if (TRACE_POSTGRESQL_RUSAGE_ENABLED())
 +        {
@@ -27,17 +26,18 @@ index 722c5acf38..c2ab5c0b06 100644
 +        };
 +        TRACE_POSTGRESQL_REPORT_ACTIVITY(state);
 +
++
+ 	if (!beentry)
+ 		return;
 
-        if (!beentry)
-                return;
 diff --git a/src/backend/utils/probes.d b/src/backend/utils/probes.d
 index 0af275587b..658361a976 100644
 --- a/src/backend/utils/probes.d
 +++ b/src/backend/utils/probes.d
 @@ -91,4 +91,10 @@ provider postgresql {
-        probe wal__switch();
-        probe wal__buffer__write__dirty__start();
-        probe wal__buffer__write__dirty__done();
+ 	probe wal__switch();
+ 	probe wal__buffer__write__dirty__start();
+ 	probe wal__buffer__write__dirty__done();
 +
 +        probe wait__event__start(uint32);
 +        probe wait__event__end();
@@ -64,14 +64,14 @@ index 009b03a520..107bda5ee2 100644
  pgstat_report_wait_start(uint32 wait_event_info)
  {
 +        TRACE_POSTGRESQL_WAIT_EVENT_START(wait_event_info);
-        /*
-         * Since this is a four-byte field which is always read and written as
-         * four-bytes, updates are atomic.
+ 	/*
+ 	 * Since this is a four-byte field which is always read and written as
+ 	 * four-bytes, updates are atomic.
 @@ -103,6 +107,7 @@ pgstat_report_wait_start(uint32 wait_event_info)
  static inline void
  pgstat_report_wait_end(void)
  {
 +        TRACE_POSTGRESQL_WAIT_EVENT_END();
-        /* see pgstat_report_wait_start() */
-        *(volatile uint32 *) my_wait_event_info = 0;
+ 	/* see pgstat_report_wait_start() */
+ 	*(volatile uint32 *) my_wait_event_info = 0;
  }
