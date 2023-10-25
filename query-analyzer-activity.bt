@@ -23,8 +23,15 @@ BEGIN
 }
 usdt:/usr/local/pgsql/bin/postgres:rusage
 {
-    @backend_cpu_time_delta[pid] += arg0 - @backend_cpu_time[pid];
-    @backend_cpu_time[pid] = arg0;
+    $pid = pid;
+    @backend_u_cpu_time_delta[$pid] += arg0 - @backend_u_cpu_time[$pid];
+    @backend_s_cpu_time_delta[$pid] += arg1 - @backend_s_cpu_time[$pid];
+    @backend_vcsw_delta[$pid] += arg2 - @backend_vcsw[$pid];
+    @backend_icsw_delta[$pid] += arg3 - @backend_icsw[$pid];
+    @backend_u_cpu_time[$pid] = arg0;
+    @backend_s_cpu_time[$pid] = arg1;
+    @backend_vcsw[$pid] = arg2;
+    @backend_icsw[$pid] = arg3;
 }
 usdt:/usr/local/pgsql/bin/postgres:report__activity
 {
@@ -33,12 +40,15 @@ usdt:/usr/local/pgsql/bin/postgres:report__activity
     $pid = pid;
     if ( @be_state[$pid] != $arg0 )
     {
-        printf("[%5u]Activity: W:#%u/%u/%u%%: C:%u/%u%%: E:%u: %s -> %s\n", $pid, @wait_event_count[$pid], @wait_event_time[$pid]/1000, (100 * @wait_event_time[$pid]) / ($time - @be_state_time[$pid]), @backend_cpu_time_delta[$pid], (100 * @backend_cpu_time_delta[$pid]) / (($time - @be_state_time[$pid]) / 100), ( $time - @be_state_time[$pid] ) / 1000, @backend_state[@be_state[$pid]], @backend_state[$arg0]);
+        printf("[%5u]Activity: W:#%u/%u/%u%%: C:(u%u/s%u)%u/%u%%: E:%u: %s -> %s [v:%u/i:%u]\n", $pid, @wait_event_count[$pid], @wait_event_time[$pid]/1000, (100 * @wait_event_time[$pid]) / ($time - @be_state_time[$pid]), @backend_u_cpu_time_delta[$pid], @backend_s_cpu_time_delta[$pid], (@backend_u_cpu_time_delta[$pid] + @backend_s_cpu_time_delta[$pid]), (100 * (@backend_u_cpu_time_delta[$pid] + @backend_s_cpu_time_delta[$pid])) / (($time - @be_state_time[$pid]) / 1000), ( $time - @be_state_time[$pid] ) / 1000, @backend_state[@be_state[$pid]], @backend_state[$arg0], @backend_vcsw_delta[$pid], @backend_icsw_delta[$pid]);
         @be_state[$pid]=$arg0;
         @be_state_time[$pid]=$time;
         @wait_event_count[$pid] = 0;
         @wait_event_time[$pid] = (uint64)0;
-        @backend_cpu_time_delta[$pid] = (uint64)0;
+        @backend_u_cpu_time_delta[$pid] = (uint64)0;
+        @backend_s_cpu_time_delta[$pid] = (uint64)0;
+        @backend_vcsw_delta[$pid] = (uint32)0;
+        @backend_icsw_delta[$pid] = (uint32)0;
     }
 }
 usdt:/usr/local/pgsql/bin/postgres:statement__status
@@ -143,7 +153,7 @@ usdt:/usr/local/pgsql/bin/postgres:wait__event__end
     $pid = pid;
     $time = nsecs;
     @wait_event_count[$pid] += 1;
-    @wait_event_time[$pid] += ($time = @wait_event_start[$pid];
+    @wait_event_time[$pid] += ($time - @wait_event_start[$pid]);
 }
 END
 {
@@ -165,8 +175,17 @@ END
     clear(@phase_done);
     clear(@current_statement);
     clear(@wait_event_start);
-    clear(@wait_event_class);
-    clear(@wait_event_name);
-    clear(@wait_class);
-    clear(@wait_name);
+    clear(@backend_state);
+    clear(@wait_event_count);
+    clear(@wait_event_time);
+    clear(@be_state);
+    clear(@be_state_time);
+    clear(@backend_icsw);
+    clear(@backend_icsw_delta);
+    clear(@backend_vcsw);
+    clear(@backend_vcsw_delta);
+    clear(@backend_s_cpu_time);
+    clear(@backend_s_cpu_time_delta);
+    clear(@backend_u_cpu_time);
+    clear(@backend_u_cpu_time_delta);
 }

@@ -1,0 +1,506 @@
+#!/usr/bin/env bpftrace
+// Requires:
+// - bpftrace, linux-libc-dev (debian)
+//
+// Add -p <pid> to filter on a single process (select bg_backend_pid())
+//
+// FIXME: path to postgres executable is hard coded
+// FIXME: if an error occurs in the execute phase, there is no query_execute_done probe fired, and the portal counter stays at current value
+#include <linux/sched.h>
+#include <sys/types.h>
+//typedef u64 uint64_t;
+#define u64 long long
+
+
+BEGIN
+{
+    printf("PostgreSQL statement execution analyzer.\n");
+    printf("Time in microseconds (us).\n");
+    printf("pid   :Phase      :time to phase :time in phase : query\n");
+    printf("------|-----------|--------------|--------------|------\n");
+    @task_state[0]="TASK_RUNNING";
+    @task_state[1]="TASK_INTERRUPTIBLE";
+    @task_state[2]="TASK_UNINTERRUPTIBLE";
+    @task_state[4]="TASK_STOPPED";
+    @task_state[8]="TASK_TRACED";
+    @task_state[16]="EXIT_ZOMBIE";
+    @task_state[32]="EXIT_DEAD";
+    @task_state[64]="TASK_DEAD";
+    @task_state[128]="TASK_WAKEKILL";
+    @task_state[256]="TASK_WAKING";
+@syscall[0]="io_setup";
+@syscall[1]="io_destroy";
+@syscall[2]="io_submit";
+@syscall[3]="io_cancel";
+@syscall[4]="io_getevents";
+@syscall[5]="setxattr";
+@syscall[6]="lsetxattr";
+@syscall[7]="fsetxattr";
+@syscall[8]="getxattr";
+@syscall[9]="lgetxattr";
+@syscall[10]="fgetxattr";
+@syscall[11]="listxattr";
+@syscall[12]="llistxattr";
+@syscall[13]="flistxattr";
+@syscall[14]="removexattr";
+@syscall[15]="lremovexattr";
+@syscall[16]="fremovexattr";
+@syscall[17]="getcwd";
+@syscall[18]="lookup_dcookie";
+@syscall[19]="eventfd2";
+@syscall[20]="epoll_create1";
+@syscall[21]="epoll_ctl";
+@syscall[22]="epoll_pwait";
+@syscall[23]="dup";
+@syscall[24]="dup3";
+@syscall[26]="inotify_init1";
+@syscall[27]="inotify_add_watch";
+@syscall[28]="inotify_rm_watch";
+@syscall[29]="ioctl";
+@syscall[30]="ioprio_set";
+@syscall[31]="ioprio_get";
+@syscall[32]="flock";
+@syscall[33]="mknodat";
+@syscall[34]="mkdirat";
+@syscall[35]="unlinkat";
+@syscall[36]="symlinkat";
+@syscall[37]="linkat";
+@syscall[38]="renameat";
+@syscall[39]="umount2";
+@syscall[40]="mount";
+@syscall[41]="pivot_root";
+@syscall[42]="nfsservctl";
+@syscall[47]="fallocate";
+@syscall[48]="faccessat";
+@syscall[49]="chdir";
+@syscall[50]="fchdir";
+@syscall[51]="chroot";
+@syscall[52]="fchmod";
+@syscall[53]="fchmodat";
+@syscall[54]="fchownat";
+@syscall[55]="fchown";
+@syscall[56]="openat";
+@syscall[57]="close";
+@syscall[58]="vhangup";
+@syscall[59]="pipe2";
+@syscall[60]="quotactl";
+@syscall[61]="getdents64";
+@syscall[63]="read";
+@syscall[64]="write";
+@syscall[65]="readv";
+@syscall[66]="writev";
+@syscall[67]="pread64";
+@syscall[68]="pwrite64";
+@syscall[69]="preadv";
+@syscall[70]="pwritev";
+@syscall[72]="pselect6";
+@syscall[73]="ppoll";
+@syscall[74]="signalfd4";
+@syscall[75]="vmsplice";
+@syscall[76]="splice";
+@syscall[77]="tee";
+@syscall[78]="readlinkat";
+@syscall[81]="sync";
+@syscall[82]="fsync";
+@syscall[83]="fdatasync";
+@syscall[84]="sync_file_range2";
+@syscall[84]="sync_file_range";
+@syscall[85]="timerfd_create";
+@syscall[86]="timerfd_settime";
+@syscall[87]="timerfd_gettime";
+@syscall[88]="utimensat";
+@syscall[89]="acct";
+@syscall[90]="capget";
+@syscall[91]="capset";
+@syscall[92]="personality";
+@syscall[93]="exit";
+@syscall[94]="exit_group";
+@syscall[95]="waitid";
+@syscall[96]="set_tid_address";
+@syscall[97]="unshare";
+@syscall[98]="futex";
+@syscall[99]="set_robust_list";
+@syscall[100]="get_robust_list";
+@syscall[101]="nanosleep";
+@syscall[102]="getitimer";
+@syscall[103]="setitimer";
+@syscall[104]="kexec_load";
+@syscall[105]="init_module";
+@syscall[106]="delete_module";
+@syscall[107]="timer_create";
+@syscall[108]="timer_gettime";
+@syscall[109]="timer_getoverrun";
+@syscall[110]="timer_settime";
+@syscall[111]="timer_delete";
+@syscall[112]="clock_settime";
+@syscall[113]="clock_gettime";
+@syscall[114]="clock_getres";
+@syscall[115]="clock_nanosleep";
+@syscall[116]="syslog";
+@syscall[117]="ptrace";
+@syscall[118]="sched_setparam";
+@syscall[119]="sched_setscheduler";
+@syscall[120]="sched_getscheduler";
+@syscall[121]="sched_getparam";
+@syscall[122]="sched_setaffinity";
+@syscall[123]="sched_getaffinity";
+@syscall[124]="sched_yield";
+@syscall[125]="sched_get_priority_max";
+@syscall[126]="sched_get_priority_min";
+@syscall[127]="sched_rr_get_interval";
+@syscall[128]="restart_syscall";
+@syscall[129]="kill";
+@syscall[130]="tkill";
+@syscall[131]="tgkill";
+@syscall[132]="sigaltstack";
+@syscall[133]="rt_sigsuspend";
+@syscall[134]="rt_sigaction";
+@syscall[135]="rt_sigprocmask";
+@syscall[136]="rt_sigpending";
+@syscall[137]="rt_sigtimedwait";
+@syscall[138]="rt_sigqueueinfo";
+@syscall[139]="rt_sigreturn";
+@syscall[140]="setpriority";
+@syscall[141]="getpriority";
+@syscall[142]="reboot";
+@syscall[143]="setregid";
+@syscall[144]="setgid";
+@syscall[145]="setreuid";
+@syscall[146]="setuid";
+@syscall[147]="setresuid";
+@syscall[148]="getresuid";
+@syscall[149]="setresgid";
+@syscall[150]="getresgid";
+@syscall[151]="setfsuid";
+@syscall[152]="setfsgid";
+@syscall[153]="times";
+@syscall[154]="setpgid";
+@syscall[155]="getpgid";
+@syscall[156]="getsid";
+@syscall[157]="setsid";
+@syscall[158]="getgroups";
+@syscall[159]="setgroups";
+@syscall[160]="uname";
+@syscall[161]="sethostname";
+@syscall[162]="setdomainname";
+@syscall[163]="getrlimit";
+@syscall[164]="setrlimit";
+@syscall[165]="getrusage";
+@syscall[166]="umask";
+@syscall[167]="prctl";
+@syscall[168]="getcpu";
+@syscall[169]="gettimeofday";
+@syscall[170]="settimeofday";
+@syscall[171]="adjtimex";
+@syscall[172]="getpid";
+@syscall[173]="getppid";
+@syscall[174]="getuid";
+@syscall[175]="geteuid";
+@syscall[176]="getgid";
+@syscall[177]="getegid";
+@syscall[178]="gettid";
+@syscall[179]="sysinfo";
+@syscall[180]="mq_open";
+@syscall[181]="mq_unlink";
+@syscall[182]="mq_timedsend";
+@syscall[183]="mq_timedreceive";
+@syscall[184]="mq_notify";
+@syscall[185]="mq_getsetattr";
+@syscall[186]="msgget";
+@syscall[187]="msgctl";
+@syscall[188]="msgrcv";
+@syscall[189]="msgsnd";
+@syscall[190]="semget";
+@syscall[191]="semctl";
+@syscall[192]="semtimedop";
+@syscall[193]="semop";
+@syscall[194]="shmget";
+@syscall[195]="shmctl";
+@syscall[196]="shmat";
+@syscall[197]="shmdt";
+@syscall[198]="socket";
+@syscall[199]="socketpair";
+@syscall[200]="bind";
+@syscall[201]="listen";
+@syscall[202]="accept";
+@syscall[203]="connect";
+@syscall[204]="getsockname";
+@syscall[205]="getpeername";
+@syscall[206]="sendto";
+@syscall[207]="recvfrom";
+@syscall[208]="setsockopt";
+@syscall[209]="getsockopt";
+@syscall[210]="shutdown";
+@syscall[211]="sendmsg";
+@syscall[212]="recvmsg";
+@syscall[213]="readahead";
+@syscall[214]="brk";
+@syscall[215]="munmap";
+@syscall[216]="mremap";
+@syscall[217]="add_key";
+@syscall[218]="request_key";
+@syscall[219]="keyctl";
+@syscall[220]="clone";
+@syscall[221]="execve";
+@syscall[224]="swapon";
+@syscall[225]="swapoff";
+@syscall[226]="mprotect";
+@syscall[227]="msync";
+@syscall[228]="mlock";
+@syscall[229]="munlock";
+@syscall[230]="mlockall";
+@syscall[231]="munlockall";
+@syscall[232]="mincore";
+@syscall[233]="madvise";
+@syscall[234]="remap_file_pages";
+@syscall[235]="mbind";
+@syscall[236]="get_mempolicy";
+@syscall[237]="set_mempolicy";
+@syscall[238]="migrate_pages";
+@syscall[239]="move_pages";
+@syscall[240]="rt_tgsigqueueinfo";
+@syscall[241]="perf_event_open";
+@syscall[242]="accept4";
+@syscall[243]="recvmmsg";
+@syscall[244]="arch_specific_syscall";
+@syscall[260]="wait4";
+@syscall[261]="prlimit64";
+@syscall[262]="fanotify_init";
+@syscall[263]="fanotify_mark";
+@syscall[264]="name_to_handle_at";
+@syscall[265]="open_by_handle_at";
+@syscall[266]="clock_adjtime";
+@syscall[267]="syncfs";
+@syscall[268]="setns";
+@syscall[269]="sendmmsg";
+@syscall[270]="process_vm_readv";
+@syscall[271]="process_vm_writev";
+@syscall[272]="kcmp";
+@syscall[273]="finit_module";
+@syscall[274]="sched_setattr";
+@syscall[275]="sched_getattr";
+@syscall[276]="renameat2";
+@syscall[277]="seccomp";
+@syscall[278]="getrandom";
+@syscall[279]="memfd_create";
+@syscall[280]="bpf";
+@syscall[281]="execveat";
+@syscall[282]="userfaultfd";
+@syscall[283]="membarrier";
+@syscall[284]="mlock2";
+@syscall[285]="copy_file_range";
+@syscall[286]="preadv2";
+@syscall[287]="pwritev2";
+@syscall[288]="pkey_mprotect";
+@syscall[289]="pkey_alloc";
+@syscall[290]="pkey_free";
+@syscall[291]="statx";
+@syscall[292]="io_pgetevents";
+@syscall[293]="rseq";
+@syscall[294]="kexec_file_load";
+@syscall[403]="clock_gettime64";
+@syscall[404]="clock_settime64";
+@syscall[405]="clock_adjtime64";
+@syscall[406]="clock_getres_time64";
+@syscall[407]="clock_nanosleep_time64";
+@syscall[408]="timer_gettime64";
+@syscall[409]="timer_settime64";
+@syscall[410]="timerfd_gettime64";
+@syscall[411]="timerfd_settime64";
+@syscall[412]="utimensat_time64";
+@syscall[413]="pselect6_time64";
+@syscall[414]="ppoll_time64";
+@syscall[416]="io_pgetevents_time64";
+@syscall[417]="recvmmsg_time64";
+@syscall[418]="mq_timedsend_time64";
+@syscall[419]="mq_timedreceive_time64";
+@syscall[420]="semtimedop_time64";
+@syscall[421]="rt_sigtimedwait_time64";
+@syscall[422]="futex_time64";
+@syscall[423]="sched_rr_get_interval_time64";
+@syscall[424]="pidfd_send_signal";
+@syscall[425]="io_uring_setup";
+@syscall[426]="io_uring_enter";
+@syscall[427]="io_uring_register";
+@syscall[428]="open_tree";
+@syscall[429]="move_mount";
+@syscall[430]="fsopen";
+@syscall[431]="fsconfig";
+@syscall[432]="fsmount";
+@syscall[433]="fspick";
+@syscall[434]="pidfd_open";
+@syscall[435]="clone3";
+@syscall[436]="close_range";
+@syscall[437]="openat2";
+@syscall[438]="pidfd_getfd";
+@syscall[439]="faccessat2";
+@syscall[440]="process_madvise";
+@syscall[441]="epoll_pwait2";
+@syscall[442]="mount_setattr";
+@syscall[443]="quotactl_fd";
+@syscall[444]="landlock_create_ruleset";
+@syscall[445]="landlock_add_rule";
+@syscall[446]="landlock_restrict_self";
+@syscall[447]="memfd_secret";
+@syscall[448]="process_mrelease";
+@syscall[449]="futex_waitv";
+@syscall[450]="set_mempolicy_home_node";
+@syscall[451]="syscalls";
+}
+usdt:/usr/local/pgsql/bin/postgres:statement__status
+{
+    @current_statement[pid] = str(arg0);
+}
+usdt:/usr/local/pgsql/bin/postgres:query__start
+{
+    $time = nsecs;
+    printf("[%5u]Query start:              :              : %s\n", pid, str(arg0));
+    @query_start[pid] = $time;
+    @phase_done[pid] = $time;
+    @query_trigger[pid] = 1;
+}
+usdt:/usr/local/pgsql/bin/postgres:query__done
+{
+    $time = nsecs;
+    $query_end = $time - @query_start[pid];
+    printf("[%5u]Query done : (%10u) :    %10u: %s\n", pid, ($time - @phase_done[pid])/1000, $query_end/1000, str(arg0));
+    @parse[pid] = (uint64)0;
+    @rewrite[pid] = (uint64)0;
+    @plan[pid] = (uint64)0;
+    @execute[pid] = (uint64)0;
+    @query_trigger[pid] = 0;
+}
+usdt:/usr/local/pgsql/bin/postgres:query__parse__start
+{
+    $time = nsecs;
+    if ( @query_trigger[pid] == 1 )
+    {
+        @to_parse[pid] = $time - @phase_done[pid];
+    }
+    else
+    {
+        @to_parse[pid] = 0;
+    }
+    @parse_start[pid] = $time;
+}
+usdt:/usr/local/pgsql/bin/postgres:query__parse__done
+{
+    $time = nsecs;
+    @parse[pid] += $time - @parse_start[pid];
+    printf("[%5u] parse     : (%10u) :    %10u: %s\n", pid, @to_parse[pid]/1000, ($time - @parse_start[pid])/1000, str(arg0));
+    @phase_done[pid] = $time;
+}
+usdt:/usr/local/pgsql/bin/postgres:query__rewrite__start
+{
+    $time = nsecs;
+    @to_rewrite[pid] = $time - @phase_done[pid];
+    @rewrite_start[pid] = $time;
+}
+usdt:/usr/local/pgsql/bin/postgres:query__rewrite__done
+{
+    $time = nsecs;
+    @rewrite[pid] += $time - @rewrite_start[pid];
+    printf("[%5u] rewrite   : (%10u) :    %10u: %s\n", pid, @to_rewrite[pid]/1000, ($time - @rewrite_start[pid])/1000, str(arg0));
+    @phase_done[pid] = $time;
+}
+usdt:/usr/local/pgsql/bin/postgres:query__plan__start
+{
+    $time = nsecs;
+    @to_plan[pid] = $time - @phase_done[pid];
+    @plan_start[pid] = $time;
+}
+usdt:/usr/local/pgsql/bin/postgres:query__plan__done
+{
+    $time = nsecs;
+    @plan[pid] += $time - @plan_start[pid];
+    printf("[%5u] plan      : (%10u) :    %10u: %s\n", pid, @to_plan[pid]/1000, ($time - @plan_start[pid])/1000, @current_statement[pid]);
+    @phase_done[pid] = $time;
+}
+usdt:/usr/local/pgsql/bin/postgres:query__execute__start
+{
+    $time = nsecs;
+    @portal_counter[pid]+=1;
+    @to_execute[pid, @portal_counter[pid]] = $time - @phase_done[pid];
+    @execute_start[pid, @portal_counter[pid]] = $time;
+}
+usdt:/usr/local/pgsql/bin/postgres:query__execute__done
+{
+    $time = nsecs;
+    if ( @portal_counter[pid] == 1 )
+    {
+        printf("[%5u] execute   : (%10u) :    %10u: %s\n", pid, @to_execute[pid, @portal_counter[pid]]/1000, ($time - @execute_start[pid, @portal_counter[pid]])/1000, @current_statement[pid]);
+    }
+    else
+    {
+        printf("[%5u] execute   : (%10u) :    %10u: %s\n", pid, 0, ($time - @execute_start[pid, @portal_counter[pid]])/1000, @current_statement[pid]);
+    }
+    @portal_counter[pid]-=1;
+    @phase_done[pid] = $time;
+}
+tracepoint:sched:sched_waking
+/args->pid == 19364/
+{
+    printf("[%5u] ttwu: %u\n", pid, args->pid);
+    @ttwu[args->pid]=nsecs;
+}
+tracepoint:sched:sched_switch
+{
+    $pid = 19364;
+    $time = nsecs;
+    if ( args->next_pid == $pid )
+    {
+        if ( @ttwu[$pid] != 0 )
+        {
+            @ttwu_latency[$pid]=$time - @ttwu[$pid];
+            @ttwu[$pid]=0;
+            printf("[%5u] on cpu, wakeup delay: %u\n", $pid, @ttwu_latency[$pid]/1000);
+        }
+        else
+        {
+            printf("[%5u] on cpu, sleeping delay: %u\n", $pid, ($time - @leaving_slice_time[$pid])/1000);
+            @leaving_slice_time[$pid]=(uint64)0;
+        }
+        @slice_time[$pid]=$time;
+    }
+    if ( args->prev_pid == $pid )
+    {
+        @leaving_slice_time[$pid]=$time;
+        if ( @ttwu_latency[$pid] != 0 )
+        {
+            printf("[%5u] leave cpu (%s), slice time: %u (%u)\n", $pid, @task_state[args->prev_state], ($time - @slice_time[$pid])/1000, @ttwu_latency[$pid]/1000);
+            printf("%s\n", kstack);
+        }
+        else
+        {
+            printf("[%5u] leave cpu (%s), slice time: %u\n", $pid, @task_state[args->prev_state], ($time - @slice_time[$pid])/1000);
+        }
+    }
+}
+tracepoint:raw_syscalls:sys_enter
+/ pid == 19364 /
+{
+    printf("[%5u] syscall: %s\n", pid, @syscall[args->id]);
+
+}
+END
+{
+    clear(@query_start);
+    clear(@query_trigger);
+    clear(@to_parse);
+    clear(@parse_start);
+    clear(@parse);
+    clear(@to_rewrite);
+    clear(@rewrite_start);
+    clear(@rewrite);
+    clear(@to_plan);
+    clear(@plan_start);
+    clear(@plan);
+    clear(@to_execute);
+    clear(@execute_start);
+    clear(@execute);
+    clear(@portal_counter);
+    clear(@phase_done);
+    clear(@current_statement);
+    clear(@task_state);
+    clear(@syscall);
+}
