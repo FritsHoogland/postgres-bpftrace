@@ -14,6 +14,11 @@
 
 BEGIN
 {
+    if ( $# != 1 )
+    {
+       printf("First argument must be PID of the process to trace!\n");
+       exit;
+    }
     printf("PostgreSQL statement execution analyzer.\n");
     printf("Time in microseconds (us).\n");
     printf("pid   :Phase      :time to phase :time in phase : query\n");
@@ -438,14 +443,14 @@ usdt:/usr/local/pgsql/bin/postgres:query__execute__done
     @phase_done[pid] = $time;
 }
 tracepoint:sched:sched_waking
-/args->pid == 19364/
+/args->pid == $1/
 {
     printf("[%5u] ttwu: %u\n", pid, args->pid);
     @ttwu[args->pid]=nsecs;
 }
 tracepoint:sched:sched_switch
 {
-    $pid = 19364;
+    $pid = $1;
     $time = nsecs;
     if ( args->next_pid == $pid )
     {
@@ -477,7 +482,7 @@ tracepoint:sched:sched_switch
     }
 }
 tracepoint:raw_syscalls:sys_enter
-/ pid == 19364 /
+/ pid == $1 /
 {
     printf("[%5u] syscall: %s\n", pid, @syscall[args->id]);
 
