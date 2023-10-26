@@ -1,59 +1,60 @@
 diff --git a/src/backend/utils/activity/backend_status.c b/src/backend/utils/activity/backend_status.c
-index 6e734c6caf..2ce7585784 100644
+index 6e734c6caf..cd8345c6db 100644
 --- a/src/backend/utils/activity/backend_status.c
 +++ b/src/backend/utils/activity/backend_status.c
 @@ -25,6 +25,8 @@
  #include "utils/guc.h"			/* for application_name */
  #include "utils/memutils.h"
-
+ 
 +#include "sys/resource.h"               /* for getrusage() */
 +
-
+ 
  /* ----------
   * Total number of backends including auxiliary
-@@ -528,6 +530,18 @@ pgstat_report_activity(BackendState state, const char *cmd_str)
-
+@@ -528,6 +530,19 @@ pgstat_report_activity(BackendState state, const char *cmd_str)
+ 
  	TRACE_POSTGRESQL_STATEMENT_STATUS(cmd_str);
-
-+        /* getrusage */
-+        if (TRACE_POSTGRESQL_RUSAGE_ENABLED())
-+        {
-+            struct rusage r_usage;
-+            long long u_cpu;
-+            long long s_cpu;
-+            getrusage(RUSAGE_SELF, &r_usage);
-+            u_cpu = (r_usage.ru_utime.tv_sec * 1000000) + r_usage.ru_utime.tv_usec;
-+            s_cpu = (r_usage.ru_stime.tv_sec * 1000000) + r_usage.ru_stime.tv_usec;
-+            TRACE_POSTGRESQL_RUSAGE(u_cpu, s_cpu, r_usage.ru_nvcsw, r_usage.ru_nivcsw);
-+        };
-+        TRACE_POSTGRESQL_REPORT_ACTIVITY(state);
+ 
++	/* getrusage */
++	if (TRACE_POSTGRESQL_RUSAGE_ENABLED())
++	{
++		struct rusage r_usage;
++		long long u_cpu;
++		long long s_cpu;
++		getrusage(RUSAGE_SELF, &r_usage);
++		u_cpu = (r_usage.ru_utime.tv_sec * 1000000) + r_usage.ru_utime.tv_usec;
++		s_cpu = (r_usage.ru_stime.tv_sec * 1000000) + r_usage.ru_stime.tv_usec;
++		TRACE_POSTGRESQL_RUSAGE(u_cpu, s_cpu, r_usage.ru_nvcsw, r_usage.ru_nivcsw);
++	};
++	TRACE_POSTGRESQL_REPORT_ACTIVITY(state);
 +
  	if (!beentry)
  		return;
-
+ 
 diff --git a/src/backend/utils/probes.d b/src/backend/utils/probes.d
-index 0af275587b..658361a976 100644
+index 0af275587b..c1014754cd 100644
 --- a/src/backend/utils/probes.d
 +++ b/src/backend/utils/probes.d
-@@ -91,4 +91,10 @@ provider postgresql {
+@@ -91,4 +91,11 @@ provider postgresql {
  	probe wal__switch();
  	probe wal__buffer__write__dirty__start();
  	probe wal__buffer__write__dirty__done();
 +
-+        probe wait__event__start(uint32);
-+        probe wait__event__end();
++	probe wait__event__start(uint32);
++	probe wait__event__end();
 +
-+        probe rusage(uint64, uint64, uint32, uint32);
-+        probe report__activity(uint32);
++	probe rusage(uint64, uint64, uint32, uint32);
++	probe report__activity(uint32);
++
  };
 diff --git a/src/include/utils/wait_event.h b/src/include/utils/wait_event.h
-index 009b03a520..107bda5ee2 100644
+index 009b03a520..f3b06113e9 100644
 --- a/src/include/utils/wait_event.h
 +++ b/src/include/utils/wait_event.h
 @@ -28,6 +28,9 @@
  /* enums for wait events */
  #include "utils/wait_event_types.h"
-
+ 
 +/* pg_trace for TRACE_POSTGRESQL macros */
 +#include "pg_trace.h"
 +
@@ -64,7 +65,7 @@ index 009b03a520..107bda5ee2 100644
  static inline void
  pgstat_report_wait_start(uint32 wait_event_info)
  {
-+        TRACE_POSTGRESQL_WAIT_EVENT_START(wait_event_info);
++	TRACE_POSTGRESQL_WAIT_EVENT_START(wait_event_info);
  	/*
  	 * Since this is a four-byte field which is always read and written as
  	 * four-bytes, updates are atomic.
@@ -72,7 +73,7 @@ index 009b03a520..107bda5ee2 100644
  static inline void
  pgstat_report_wait_end(void)
  {
-+        TRACE_POSTGRESQL_WAIT_EVENT_END();
++	TRACE_POSTGRESQL_WAIT_EVENT_END();
  	/* see pgstat_report_wait_start() */
  	*(volatile uint32 *) my_wait_event_info = 0;
  }
