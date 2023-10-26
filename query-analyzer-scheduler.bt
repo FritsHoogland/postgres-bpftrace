@@ -17,7 +17,7 @@ BEGIN
     if ( $# != 1 )
     {
        printf("First argument must be PID of the process to trace!\n");
-       exit;
+       exit();
     }
     printf("PostgreSQL statement execution analyzer.\n");
     printf("Time in microseconds (us).\n");
@@ -58,6 +58,7 @@ BEGIN
 @syscall[22]="epoll_pwait";
 @syscall[23]="dup";
 @syscall[24]="dup3";
+@syscall[25]="fcntl";
 @syscall[26]="inotify_init1";
 @syscall[27]="inotify_add_watch";
 @syscall[28]="inotify_rm_watch";
@@ -75,6 +76,10 @@ BEGIN
 @syscall[40]="mount";
 @syscall[41]="pivot_root";
 @syscall[42]="nfsservctl";
+@syscall[43]="statfs";
+@syscall[44]="fstatfs";
+@syscall[45]="truncate";
+@syscall[46]="ftruncate";
 @syscall[47]="fallocate";
 @syscall[48]="faccessat";
 @syscall[49]="chdir";
@@ -90,6 +95,7 @@ BEGIN
 @syscall[59]="pipe2";
 @syscall[60]="quotactl";
 @syscall[61]="getdents64";
+@syscall[62]="lseek";
 @syscall[63]="read";
 @syscall[64]="write";
 @syscall[65]="readv";
@@ -98,6 +104,7 @@ BEGIN
 @syscall[68]="pwrite64";
 @syscall[69]="preadv";
 @syscall[70]="pwritev";
+@syscall[71]="sendfile";
 @syscall[72]="pselect6";
 @syscall[73]="ppoll";
 @syscall[74]="signalfd4";
@@ -105,6 +112,8 @@ BEGIN
 @syscall[76]="splice";
 @syscall[77]="tee";
 @syscall[78]="readlinkat";
+@syscall[79]="fstatat";
+@syscall[80]="fstat";
 @syscall[81]="sync";
 @syscall[82]="fsync";
 @syscall[83]="fdatasync";
@@ -247,6 +256,8 @@ BEGIN
 @syscall[219]="keyctl";
 @syscall[220]="clone";
 @syscall[221]="execve";
+@syscall[222]="mmap";
+@syscall[223]="fadvise64";
 @syscall[224]="swapon";
 @syscall[225]="swapoff";
 @syscall[226]="mprotect";
@@ -445,8 +456,9 @@ usdt:/usr/local/pgsql/bin/postgres:query__execute__done
 tracepoint:sched:sched_waking
 /args->pid == $1/
 {
-    printf("[%5u] ttwu: %u\n", pid, args->pid);
-    @ttwu[args->pid]=nsecs;
+    $time = nsecs;
+    printf("[%5u]Swaking    : (%10u) :    %10u:\n", args->pid, ($time - @leaving_slice_time[args->pid])/1000, 0);
+    @ttwu[args->pid]=$time;
 }
 tracepoint:sched:sched_switch
 {
@@ -458,37 +470,49 @@ tracepoint:sched:sched_switch
         {
             @ttwu_latency[$pid]=$time - @ttwu[$pid];
             @ttwu[$pid]=0;
-            printf("[%5u] on cpu, wakeup delay: %u\n", $pid, @ttwu_latency[$pid]/1000);
+            printf("[%5u]Son cpu a  : (%10u) :    %10u:\n", $pid, @ttwu_latency[$pid]/1000, 0);
         }
         else
         {
-            printf("[%5u] on cpu, sleeping delay: %u\n", $pid, ($time - @leaving_slice_time[$pid])/1000);
-            @leaving_slice_time[$pid]=(uint64)0;
+            @regain_cpu[$pid]=$time - @leaving_slice_time[$pid];
+            printf("[%5u]Son cpu b  : (%10u) :    %10u:\n", $pid, @regain_cpu[$pid]/1000, 0);
         }
         @slice_time[$pid]=$time;
     }
     if ( args->prev_pid == $pid )
     {
         @leaving_slice_time[$pid]=$time;
-        if ( @ttwu_latency[$pid] != 0 )
+        if ( @ttwu[$pid] != 0 )
         {
-            printf("[%5u] leave cpu (%s), slice time: %u (%u)\n", $pid, @task_state[args->prev_state], ($time - @slice_time[$pid])/1000, @ttwu_latency[$pid]/1000);
-            printf("%s\n", kstack);
+            printf("[%5u]Sleave cpu : (%10u) :    %10u: %s\n", $pid, @ttwu_latency[$pid]/1000, ($time - @slice_time[$pid])/1000, @task_state[args->prev_state]);
+            /* printf("%s\n", kstack()); */
         }
         else
         {
-            printf("[%5u] leave cpu (%s), slice time: %u\n", $pid, @task_state[args->prev_state], ($time - @slice_time[$pid])/1000);
+            printf("[%5u]Sleave cpu : (%10u) :    %10u: %s\n", $pid, @regain_cpu[$pid]/1000, ($time - @slice_time[$pid])/1000, @task_state[args->prev_state]);
+            //printf("[%5u] leave cpu (%s), slice time: %u\n", $pid, @task_state[args->prev_state], ($time - @slice_time[$pid])/1000);
         }
     }
 }
 tracepoint:raw_syscalls:sys_enter
 / pid == $1 /
 {
-    printf("[%5u] syscall: %s\n", pid, @syscall[args->id]);
+    @syscall_time[pid]=nsecs;
+
+}
+tracepoint:raw_syscalls:sys_exit
+/ pid == $1 /
+{
+    $time=nsecs;
+    printf("[%5u]Csyscall   : (%10u) :    %10u: %s\n", pid, 0, ($time - @syscall_time[pid])/1000, @syscall[args->id]);
 
 }
 END
 {
+    clear(@leaving_slice_time);
+    clear(@slice_time);
+    clear(@ttwu);
+    clear(@ttwu_latency);
     clear(@query_start);
     clear(@query_trigger);
     clear(@to_parse);
@@ -508,4 +532,6 @@ END
     clear(@current_statement);
     clear(@task_state);
     clear(@syscall);
+    clear(@regain_cpu);
+    clear(@syscall_time);
 }
