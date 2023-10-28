@@ -470,12 +470,12 @@ tracepoint:sched:sched_switch
         {
             @ttwu_latency[$pid]=$time - @ttwu[$pid];
             @ttwu[$pid]=0;
-            printf("[%5u]Son cpu a  : (%10u) :    %10u:\n", $pid, @ttwu_latency[$pid]/1000, 0);
+            printf("[%5u]Son cpu    : (%10u) :    %10u:\n", $pid, @ttwu_latency[$pid]/1000, 0);
         }
         else
         {
             @regain_cpu[$pid]=$time - @leaving_slice_time[$pid];
-            printf("[%5u]Son cpu b  : (%10u) :    %10u:\n", $pid, @regain_cpu[$pid]/1000, 0);
+            printf("[%5u]Son cpu    : (%10u) :    %10u:\n", $pid, @regain_cpu[$pid]/1000, 0);
         }
         @slice_time[$pid]=$time;
     }

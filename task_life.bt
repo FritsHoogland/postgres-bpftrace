@@ -1,0 +1,75 @@
+#!/usr/bin/env bpftrace
+#include <linux/sched.h>
+#include <sys/types.h>
+BEGIN
+{
+  if ( $# != 1 )
+  {
+    printf("First argument must be the PID of the process to trace!\n");
+    exit();
+  }
+  @task_state[0]="TASK_RUNNING";
+  @task_state[1]="TASK_INTERRUPTIBLE";
+  @task_state[2]="TASK_UNINTERRUPTIBLE";
+  @task_state[4]="TASK_STOPPED";
+  @task_state[8]="TASK_TRACED";
+  @task_state[16]="EXIT_ZOMBIE";
+  @task_state[32]="EXIT_DEAD";
+  @task_state[64]="TASK_DEAD";
+  @task_state[128]="TASK_WAKEKILL";
+  @task_state[256]="TASK_WAKING";
+}
+tracepoint:sched:sched_waking
+/args->pid == $1/
+{
+  $time = nsecs;
+  printf("[%5u] S:%10u:%10u:waking\n", args->pid, ($time - @leave[args->pid])/1000, 0);
+  @waking[args->pid] = $time;
+}
+tracepoint:sched:sched_switch
+{
+  $pid = $1;
+  $time = nsecs;
+  // pid is getting scheduled
+  if ( args->next_pid == $pid )
+  {
+    // was this pid woken previously?
+    if ( @waking[$pid] != 0 )
+    {
+      @wake_latency[$pid] = $time - @waking[$pid];
+      @waking[$pid] = 0;
+      printf("[%5u] S:%10u:%10u:on cpu\n", $pid, @wake_latency[$pid]/1000, 0);
+    }
+    // otherwise the pid is pushed off cpu involuntarily, and is getting back on cpu:
+    else
+    {
+      @reschedule[$pid] = $time - @leave[$pid];
+      printf("[%5u] S:%10u:%10u:on cpu\n", $pid, @reschedule[$pid]/1000, 0);
+    }
+    @schedule[$pid] = $time;
+  }
+  // pid is getting scheduled off cpu
+  if ( args->prev_pid == $pid )
+  {
+    @leave[$pid] = $time;
+    // did we get on cpu after getting woken?
+    if ( @waking[$pid] != 0 )
+    {
+      printf("[%5u] S:%10u:%10u:off cpu:%s\n", $pid, @wake_latency[$pid]/1000, ($time - @schedule[$pid])/1000, @task_state[args->prev_state]);
+    }
+    // otherwise the pid was still running and pushed off cpu, and now gotten back onto the cpu
+    else
+    {
+      printf("[%5u] S:%10u:%10u:off cpu:%s\n", $pid, @reschedule[$pid]/1000, ($time - @schedule[$pid])/1000, @task_state[args->prev_state]);
+    }
+  }
+}
+END
+{
+  clear(@task_state);
+  clear(@waking);
+  clear(@wake_latency);
+  clear(@reschedule);
+  clear(@leave);
+  clear(@schedule);
+}
