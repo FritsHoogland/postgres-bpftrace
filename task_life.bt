@@ -1,6 +1,6 @@
 #!/usr/bin/env bpftrace
 #include <linux/sched.h>
-#include <sys/types.h>
+#include <signal.h>
 BEGIN
 {
   if ( $# != 1 )
@@ -23,8 +23,15 @@ tracepoint:sched:sched_waking
 /args->pid == $1/
 {
   $time = nsecs;
-  printf("[%5u] S:%10u:%10u:waking\n", args->pid, ($time - @leave[args->pid])/1000, 0);
+  printf("[%5u]S:%3u:%10u:%10u:waking\n", args->pid, args->target_cpu, ($time - @leave[args->pid])/1000, 0);
   @waking[args->pid] = $time;
+  @current_cpu[args->pid] = args->target_cpu;
+}
+tracepoint:sched:sched_migrate_task
+/args->pid == $1/
+{
+  printf("[%5u]S:%3u:%10u:%10u:migrate ->%u)\n", args->pid, args->orig_cpu, 0, 0, args->dest_cpu);
+  @current_cpu[args->pid] = args->dest_cpu;
 }
 tracepoint:sched:sched_switch
 {
@@ -38,13 +45,13 @@ tracepoint:sched:sched_switch
     {
       @wake_latency[$pid] = $time - @waking[$pid];
       @waking[$pid] = 0;
-      printf("[%5u] S:%10u:%10u:on cpu\n", $pid, @wake_latency[$pid]/1000, 0);
+      printf("[%5u]S:%3u:%10u:%10u:on cpu\n", $pid, @current_cpu[$pid], @wake_latency[$pid]/1000, 0);
     }
     // otherwise the pid is pushed off cpu involuntarily, and is getting back on cpu:
     else
     {
       @reschedule[$pid] = $time - @leave[$pid];
-      printf("[%5u] S:%10u:%10u:on cpu\n", $pid, @reschedule[$pid]/1000, 0);
+      printf("[%5u]S:%3u:%10u:%10u:on cpu\n", $pid, @current_cpu[$pid], @reschedule[$pid]/1000, 0);
     }
     @schedule[$pid] = $time;
   }
@@ -55,12 +62,12 @@ tracepoint:sched:sched_switch
     // did we get on cpu after getting woken?
     if ( @wake_latency[$pid] != 0 )
     {
-      printf("[%5u] S:%10u:%10u:off cpu:%s\n", $pid, @wake_latency[$pid]/1000, ($time - @schedule[$pid])/1000, @task_state[args->prev_state]);
+      printf("[%5u]S:%3u:%10u:%10u:off cpu:%s\n", $pid, @current_cpu[$pid], @wake_latency[$pid]/1000, ($time - @schedule[$pid])/1000, @task_state[args->prev_state]);
     }
     // otherwise the pid was still running and pushed off cpu, and now gotten back onto the cpu
     else
     {
-      printf("[%5u] S:%10u:%10u:off cpu:%s\n", $pid, @reschedule[$pid]/1000, ($time - @schedule[$pid])/1000, @task_state[args->prev_state]);
+      printf("[%5u]S:%3u:%10u:%10u:off cpu:%s\n", $pid, @current_cpu[$pid], @reschedule[$pid]/1000, ($time - @schedule[$pid])/1000, @task_state[args->prev_state]);
     }
   }
 }
@@ -72,4 +79,5 @@ END
   clear(@reschedule);
   clear(@leave);
   clear(@schedule);
+  clear(@current_cpu);
 }
