@@ -1,0 +1,50 @@
+#!/usr/bin/env bpftrace
+#include <linux/sched.h>
+#include <signal.h>
+BEGIN {
+  if ( $# != 1 )
+  {
+    printf("First argument must be the task name.\n");
+    exit();
+  }
+}
+tracepoint:sched:sched_waking
+/ strcontains(args->comm, str($1)) /
+{
+  @wake_time[args->pid] = nsecs;
+}
+tracepoint:sched:sched_switch
+{
+  $time = nsecs;
+  if ( strcontains(args->next_comm, str($1)) )
+  {
+    @schedule[args->next_pid] = $time;
+    if ( @wake_time[args->next_pid] != 0 )
+    {
+      @wake_time_histogram_us = hist(($time - @wake_time[args->next_pid])/1000);
+      @wake_time[args->next_pid]=0;
+    }
+    else
+    {
+      if ( @leave_time[args->next_pid] != 0 )
+      {
+        @off_cpu_histogram_us = hist(($time - @leave_time[args->next_pid])/1000);
+      }
+    }
+  }
+  if ( strcontains(args->prev_comm, str($1)) )
+  {
+    if ( @schedule[args->prev_pid] != 0 )
+    {
+      $slice_time = ($time - @schedule[args->prev_pid])/1000;
+      @slice_time_histogram_us = hist($slice_time);
+      @leave_time[args->prev_pid]=$time;
+    }
+  }
+}
+END
+{
+  clear(@schedule);
+  clear(@wake_time);
+  clear(@leave_time);
+}
