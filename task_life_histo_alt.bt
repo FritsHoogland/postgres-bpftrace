@@ -4,19 +4,19 @@
 BEGIN {
   if ( $# != 1 )
   {
-    printf("First argument must be the task name.\n");
+    printf("First argument must be task name. WARNING: fixed first 11 chars match!\n");
     exit();
   }
 }
 tracepoint:sched:sched_waking
-/ strcontains(args->comm, str($1)) /
+/ strncmp(str($1), args->comm, 11) == 0 /
 {
   @wake_time[args->pid] = nsecs;
 }
 tracepoint:sched:sched_switch
 {
   $time = nsecs;
-  if ( strcontains(args->next_comm, str($1)) )
+  if ( strncmp(str($1), args->next_comm, 11) == 0 )
   {
     @schedule[args->next_pid] = $time;
     if ( @wake_time[args->next_pid] != 0 )
@@ -34,7 +34,7 @@ tracepoint:sched:sched_switch
       }
     }
   }
-  if ( strcontains(args->prev_comm, str($1)) )
+  if ( strncmp(str($1), args->prev_comm, 11) == 0 )
   {
     if ( @schedule[args->prev_pid] != 0 )
     {
