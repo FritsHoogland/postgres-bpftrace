@@ -3,7 +3,7 @@
 #include <signal.h>
 //
 // This script should be run with a (part of) the task name to match
-// for measuring the on and off cpu times.
+// as argument for measuring the on and off cpu times.
 //
 BEGIN {
   if ( $# != 1 )
