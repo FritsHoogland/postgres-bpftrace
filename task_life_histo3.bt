@@ -28,8 +28,10 @@ tracepoint:sched:sched_switch
     @schedule[args->next_pid] = $time;
     if ( @wake_time[args->next_pid] != 0 )
     {
-      //@wake_time_histogram_us = hist(($time - @wake_time[args->next_pid])/1000);
+      @wake_time_histogram_us = hist(($time - @wake_time[args->next_pid])/1000);
       @wake_time[args->next_pid]=0;
+      @wake_time_total_us = ($time - @wake_time[args->next_pid])/1000);
+      @wake_time_count += 1;
     }
     else
     {
@@ -57,6 +59,7 @@ END
 {
   printf("\nAverage off-cpu time: %10u us, total: %d ms\n", @off_cpu_total_us/@off_cpu_count, @off_cpu_total_us/1000);
   printf("Average slice time  : %10u us, total: %d ms\n", @slice_time_total_us/@slice_time_count, @slice_time_total_us/1000);
+  printf("Average wake time   : %10u us, total: %d ms\n", @wake_time_total_us/@wake_time_count, @wake_time_total_us/1000);
   clear(@schedule);
   clear(@wake_time);
   clear(@leave_time);
